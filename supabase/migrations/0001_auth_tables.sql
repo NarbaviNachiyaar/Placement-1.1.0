@@ -1,11 +1,13 @@
--- Run this once in Supabase Dashboard → SQL Editor.
+-- Run this once in Supabase Dashboard → SQL Editor (or via `supabase db push`).
 -- Creates the tables the app's real auth flow depends on: approved_users,
 -- profiles, user_roles — plus a trigger that auto-creates a profile + default
 -- role the moment someone signs up through Supabase Auth.
 
 create extension if not exists pgcrypto;
 
--- ── approved_users (table only — policy added after user_roles exists) ─────
+-- ── approved_users ─────────────────────────────────────────────────────────
+-- Invite-only allow-list. Checked BEFORE sign-in, so anon must be able to
+-- read it (only email/role/is_active — no secrets live here).
 create table if not exists public.approved_users (
   id uuid primary key default gen_random_uuid(),
   email text unique not null,
@@ -17,9 +19,16 @@ create table if not exists public.approved_users (
 
 alter table public.approved_users enable row level security;
 
-drop policy if exists "anon can check approval" on public.approved_users;
 create policy "anon can check approval" on public.approved_users
   for select to anon, authenticated using (true);
+
+create policy "admins manage approved_users" on public.approved_users
+  for all to authenticated using (
+    exists (
+      select 1 from public.user_roles ur
+      where ur.user_id = auth.uid() and ur.role in ('super_admin','admin')
+    )
+  );
 
 -- ── profiles ────────────────────────────────────────────────────────────────
 create table if not exists public.profiles (
@@ -35,11 +44,9 @@ create table if not exists public.profiles (
 
 alter table public.profiles enable row level security;
 
-drop policy if exists "users read own profile" on public.profiles;
 create policy "users read own profile" on public.profiles
   for select to authenticated using (auth.uid() = id);
 
-drop policy if exists "users update own profile" on public.profiles;
 create policy "users update own profile" on public.profiles
   for update to authenticated using (auth.uid() = id);
 
@@ -54,22 +61,12 @@ create table if not exists public.user_roles (
 
 alter table public.user_roles enable row level security;
 
-drop policy if exists "users read own role" on public.user_roles;
 create policy "users read own role" on public.user_roles
   for select to authenticated using (auth.uid() = user_id);
 
--- ── now that user_roles exists, add the admin-management policy for
---    approved_users which depends on it ─────────────────────────────────────
-drop policy if exists "admins manage approved_users" on public.approved_users;
-create policy "admins manage approved_users" on public.approved_users
-  for all to authenticated using (
-    exists (
-      select 1 from public.user_roles ur
-      where ur.user_id = auth.uid() and ur.role in ('super_admin','admin')
-    )
-  );
-
 -- ── auto-provision on signup ─────────────────────────────────────────────────
+-- Mirrors what the old mock startSession() did: create a profile + assign the
+-- approved_users role (default 'viewer') the moment a user first signs in.
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql

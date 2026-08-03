@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { db } from "@/lib/data/client";
+import { supabase } from "@/lib/supabase";
 import { auth, type LocalSession, type LocalUser } from "@/lib/data/auth";
 import type { AppRole } from "@/lib/data/types";
 
@@ -49,8 +49,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     const [{ data: p }, { data: r }] = await Promise.all([
-      db.from("profiles").select("*").eq("id", userId).maybeSingle(),
-      db.from("user_roles").select("role").eq("user_id", userId).limit(1).maybeSingle(),
+      supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
+      supabase.from("user_roles").select("role").eq("user_id", userId).limit(1).maybeSingle(),
     ]);
     setProfile((p as unknown as Profile) ?? null);
     setRole(((r?.role as AppRole) ?? null) as AppRole | null);
@@ -64,9 +64,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       void load(s?.user?.id);
     });
 
-    const current = auth.getSession();
-    setSession(current);
-    void load(current?.user?.id).finally(() => {
+    void auth.getSession().then(async (current) => {
+      if (!mounted) return;
+      setSession(current);
+      await load(current?.user?.id);
       if (mounted) setLoading(false);
     });
 
@@ -85,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       refresh: () => load(session?.user?.id),
       signOut: async () => {
-        auth.signOut();
+        await auth.signOut();
         setProfile(null);
         setRole(null);
       },

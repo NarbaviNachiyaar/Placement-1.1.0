@@ -28,8 +28,6 @@ export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
 
-const DEMO_CODE = "123456";
-
 const emailSchema = z.string().trim().email("Enter a valid email address").max(200);
 
 function AuthPage() {
@@ -86,10 +84,6 @@ function AuthPage() {
     try {
       const value = await checkApproved();
       if (!value) return;
-      if (!auth.hasPassword(value)) {
-        await sendOtp();
-        return;
-      }
       setStep("password");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
@@ -123,11 +117,16 @@ function AuthPage() {
     try {
       const value = await checkApproved();
       if (!value) return;
+      const { error: otpError } = await auth.sendOtp(value);
+      if (otpError) {
+        setError(otpError);
+        return;
+      }
       setStep("otp");
       setCode("");
       startCountdown();
       setNotice(
-        `${resend ? "New code generated" : "One-time code generated"} for ${value}. Demo code: ${DEMO_CODE}`,
+        `${resend ? "New code sent" : "Code sent"} to ${value}. Check your inbox for the 6-digit code.`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not send the code. Try again.");
@@ -143,10 +142,12 @@ function AuthPage() {
     try {
       const value = await checkApproved();
       if (!value) return;
-      auth.clearPassword(value);
-      setNotice(
-        `Password cleared for ${value}. Sign in with the one-time code (${DEMO_CODE}) and create a new password.`,
-      );
+      const { error: resetError } = await auth.resetPasswordForEmail(value);
+      if (resetError) {
+        setError(resetError);
+        return;
+      }
+      setNotice(`Password reset link sent to ${value}. Check your inbox to continue.`);
       setStep("email");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not reset the password.");
@@ -159,19 +160,14 @@ function AuthPage() {
     setError(null);
     setBusy(true);
     try {
-      if (token !== DEMO_CODE) {
-        setError("Invalid code. Use the demo code shown above.");
-        setCode("");
-        return;
-      }
       const value = email.trim();
-      const { error: signInError } = await auth.signInFirstTime(value);
+      const { error: signInError } = await auth.verifyOtp(value, token);
       if (signInError) {
         setError(signInError);
         setCode("");
         return;
       }
-      navigate({ to: auth.hasPassword(value) ? "/dashboard" : "/set-password", replace: true });
+      navigate({ to: "/dashboard", replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Invalid code");
       setCode("");
