@@ -2,6 +2,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { GraduationCap, KeyRound, Loader2, ShieldAlert } from "lucide-react";
 import { auth } from "@/lib/data/auth";
+import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +20,7 @@ export function PasswordSetupCard({
   onDone: () => void;
   secondary?: { label: string; onClick: () => void };
 }) {
+  const { user } = useAuth();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
@@ -36,9 +38,8 @@ export function PasswordSetupCard({
     }
     setBusy(true);
     try {
-      const email = auth.getSession()?.user.email;
-      if (!email) throw new Error("Your session expired. Sign in again.");
-      const { error: updateError } = auth.setPassword(email, password);
+      if (!user?.email) throw new Error("Your session expired. Sign in again.");
+      const { error: updateError } = await auth.setPassword(password);
       if (updateError) throw new Error(updateError);
       onDone();
     } catch (err) {
