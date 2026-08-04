@@ -93,7 +93,7 @@ function CompanyDetail() {
   const { companyId } = Route.useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { canCreate, canDelete, canAddNotes } = usePermissions();
+  const { canCreate, canDeleteCompanies, canAddNotes } = usePermissions();
 
   const [company, setCompany] = useState<Company | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -214,7 +214,7 @@ function CompanyDetail() {
                 Edit company
               </Button>
             )}
-            {canDelete && (
+            {canDeleteCompanies && (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button variant="ghost" size="icon" className="text-destructive">

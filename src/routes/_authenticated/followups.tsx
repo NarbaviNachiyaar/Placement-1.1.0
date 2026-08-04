@@ -42,7 +42,7 @@ type Row = FollowupRecord & { companies?: { name: string } | null };
 
 function FollowupsPage() {
   const { user } = useAuth();
-  const { canCreate } = usePermissions();
+  const { canCreateFollowups, canManageAnyFollowup, canManageOwnFollowupOnly } = usePermissions();
   const [rows, setRows] = useState<Row[]>([]);
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,7 +56,7 @@ function FollowupsPage() {
       db
         .from("followups")
         .select(
-          "id,company_id,followup_date,followup_time,mode,priority,status,message,voice_transcript,assigned_to,next_followup_date,next_followup_time,companies(name)",
+          "id,company_id,followup_date,followup_time,mode,priority,status,message,voice_transcript,assigned_to,created_by,next_followup_date,next_followup_time,companies(name)",
         )
         .order("followup_date", { ascending: true }),
       db.from("companies").select("id,name").is("deleted_at", null).order("name"),
@@ -105,7 +105,7 @@ function FollowupsPage() {
         title="Follow-ups"
         description="Track every recruiter touchpoint and never miss a callback."
         actions={
-          canCreate ? (
+          canCreateFollowups ? (
             <Button
               className="rounded-xl"
               onClick={() => {
@@ -157,26 +157,33 @@ function FollowupsPage() {
                 </p>
                 {r.message && <p className="mt-2 line-clamp-2 text-sm">{r.message}</p>}
               </div>
-              <div className="flex shrink-0 gap-2">
-                {canCreate && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="rounded-lg"
-                    onClick={() => {
-                      setEditing(r);
-                      setDialogOpen(true);
-                    }}
-                  >
-                    Edit
-                  </Button>
-                )}
-                {r.status === "pending" && canCreate && (
-                  <Button size="sm" className="rounded-lg" onClick={() => void complete(r)}>
-                    <CheckCircle2 className="mr-1.5 size-4" /> Done
-                  </Button>
-                )}
-              </div>
+              {(() => {
+                const canEditRow =
+                  canManageAnyFollowup ||
+                  (canManageOwnFollowupOnly && r.created_by === user?.id);
+                return (
+                  <div className="flex shrink-0 gap-2">
+                    {canEditRow && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="rounded-lg"
+                        onClick={() => {
+                          setEditing(r);
+                          setDialogOpen(true);
+                        }}
+                      >
+                        Edit
+                      </Button>
+                    )}
+                    {r.status === "pending" && canEditRow && (
+                      <Button size="sm" className="rounded-lg" onClick={() => void complete(r)}>
+                        <CheckCircle2 className="mr-1.5 size-4" /> Done
+                      </Button>
+                    )}
+                  </div>
+                );
+              })()}
             </li>
           ))}
         </ul>

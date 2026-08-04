@@ -57,7 +57,7 @@ type Approved = { id: string; email: string; role: AppRole; created_at: string }
 
 function TeamPage() {
   const { user } = useAuth();
-  const { canInvite, isSuperAdmin } = usePermissions();
+  const { canInvite, canChangeRoles, canRemoveUsers, isSuperAdmin } = usePermissions();
   const [members, setMembers] = useState<Member[]>([]);
   const [roles, setRoles] = useState<Record<string, AppRole>>({});
   const [approved, setApproved] = useState<Approved[]>([]);
@@ -289,43 +289,48 @@ function TeamPage() {
                       </Badge>
                     )}
                   </div>
-                  {canInvite && m.id !== user?.id ? (
+                  {m.id !== user?.id ? (
                     <>
-                      <Select
-                        value={roles[m.id] ?? "viewer"}
-                        onValueChange={(v) => void changeRole(m.id, v as AppRole)}
-                      >
-                        <SelectTrigger className="w-36 rounded-xl">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {ROLES.map((r) => (
-                            <SelectItem key={r} value={r}>
-                              {ROLE_LABEL[r]}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {m.is_active === false ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="rounded-xl"
-                          onClick={() => void reactivateMember(m)}
+                      {canChangeRoles ? (
+                        <Select
+                          value={roles[m.id] ?? "viewer"}
+                          onValueChange={(v) => void changeRole(m.id, v as AppRole)}
                         >
-                          Reactivate
-                        </Button>
+                          <SelectTrigger className="w-36 rounded-xl">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {ROLES.map((r) => (
+                              <SelectItem key={r} value={r}>
+                                {ROLE_LABEL[r]}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       ) : (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive"
-                          title="Remove member"
-                          onClick={() => setRemoveTarget(m)}
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
+                        <Badge variant="secondary">{ROLE_LABEL[roles[m.id] ?? "viewer"]}</Badge>
                       )}
+                      {canRemoveUsers &&
+                        (m.is_active === false ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="rounded-xl"
+                            onClick={() => void reactivateMember(m)}
+                          >
+                            Reactivate
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-destructive"
+                            title="Remove member"
+                            onClick={() => setRemoveTarget(m)}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        ))}
                     </>
                   ) : (
                     <Badge variant="secondary">{ROLE_LABEL[roles[m.id] ?? "viewer"]}</Badge>

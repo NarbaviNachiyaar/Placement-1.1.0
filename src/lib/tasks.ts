@@ -50,21 +50,23 @@ export function taskAbilities(
 ) {
   const isSuperAdmin = role === "super_admin";
   const isAdmin = role === "admin";
+  const isFaculty = role === "faculty";
   const isCoordinator = role === "coordinator";
+  const isManagerOrFaculty = isSuperAdmin || isAdmin || isFaculty;
   const isOwner = Boolean(task && userId && task.assigned_to === userId);
 
   return {
-    canCreate: isSuperAdmin || isAdmin,
-    canAssignAnyone: isSuperAdmin,
+    canCreate: isManagerOrFaculty,
+    canAssignAnyone: isSuperAdmin || isAdmin,
     canReassign: isSuperAdmin || isAdmin,
-    canEdit: isSuperAdmin || isAdmin,
-    canReview: isSuperAdmin || isAdmin,
-    canUpdateProgress: isSuperAdmin || isAdmin || (isCoordinator && isOwner),
-    canAddNotes: isSuperAdmin || isAdmin || (isCoordinator && isOwner),
-    canUpload: isSuperAdmin || isAdmin || (isCoordinator && isOwner),
-    canComplete: isSuperAdmin || isAdmin || (isCoordinator && isOwner),
+    canEdit: isManagerOrFaculty,
+    canReview: isManagerOrFaculty,
+    canUpdateProgress: isManagerOrFaculty || (isCoordinator && isOwner),
+    canAddNotes: isManagerOrFaculty || (isCoordinator && isOwner),
+    canUpload: isManagerOrFaculty || (isCoordinator && isOwner),
+    canComplete: isManagerOrFaculty || (isCoordinator && isOwner),
     canRequestExtension: isCoordinator && isOwner,
-    readOnly: role === "faculty" || role === "viewer",
+    readOnly: role === "viewer",
   };
 }
 
@@ -74,7 +76,8 @@ export function visibleTasks(
   role: AppRole | null,
   userId: string | undefined,
 ) {
-  if (role === "super_admin" || role === "admin" || role === "viewer") return tasks;
+  if (role === "super_admin" || role === "admin" || role === "faculty" || role === "viewer")
+    return tasks;
   return tasks.filter((t) => t.assigned_to === userId);
 }
 

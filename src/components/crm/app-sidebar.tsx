@@ -23,7 +23,6 @@ const NAV = [
   { to: "/calendar", label: "Calendar", icon: CalendarDays },
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/team", label: "Team", icon: Users },
-  { to: "/activity", label: "Activity Log", icon: History },
 ] as const;
 
 export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
@@ -76,6 +75,22 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
           >
             <Trash2 className="size-4" />
             Trash
+          </Link>
+        )}
+
+        {isSuperAdmin && (
+          <Link
+            to="/activity"
+            onClick={onNavigate}
+            className={cn(
+              "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all",
+              pathname === "/activity"
+                ? "gradient-brand text-primary-foreground shadow-elevated"
+                : "text-sidebar-foreground hover:bg-sidebar-accent",
+            )}
+          >
+            <History className="size-4" />
+            Activity Log
           </Link>
         )}
 

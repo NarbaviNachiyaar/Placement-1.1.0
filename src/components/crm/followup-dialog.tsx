@@ -45,6 +45,7 @@ export type FollowupRecord = {
   message: string | null;
   voice_transcript: string | null;
   assigned_to: string | null;
+  created_by?: string | null;
   next_followup_date: string | null;
   next_followup_time: string | null;
 };

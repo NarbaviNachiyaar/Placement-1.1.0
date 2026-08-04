@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Building2, Download, Plus, Search } from "lucide-react";
+import { Building2, Download, Plus, Search, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/data/client";
 import { usePermissions } from "@/lib/auth";
@@ -14,6 +14,7 @@ import {
 import { exportCsv, exportExcel, exportPdf } from "@/lib/export";
 import { PageHeader, EmptyState, ListSkeleton } from "@/components/crm/ui-kit";
 import { CompanyDialog } from "@/components/crm/company-dialog";
+import { BulkImportDialog } from "@/components/crm/bulk-import-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -69,6 +70,7 @@ function CompaniesPage() {
   const [status, setStatus] = useState("all");
   const [industry, setIndustry] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -140,6 +142,15 @@ function CompaniesPage() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            {canCreate && (
+              <Button
+                variant="outline"
+                className="rounded-xl"
+                onClick={() => setImportOpen(true)}
+              >
+                <Upload className="mr-1.5 size-4" /> Bulk import
+              </Button>
+            )}
             {canCreate && (
               <Button className="rounded-xl" onClick={() => setDialogOpen(true)}>
                 <Plus className="mr-1.5 size-4" /> Add company
@@ -234,6 +245,52 @@ function CompaniesPage() {
       )}
 
       <CompanyDialog open={dialogOpen} onOpenChange={setDialogOpen} onSaved={load} />
+
+      <BulkImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        entityLabel="Companies"
+        table="companies"
+        dedupeKey="name"
+        existingValues={new Set(rows.map((r) => r.name.trim().toLowerCase()))}
+        fields={[
+          { key: "name", required: true },
+          { key: "industry" },
+          { key: "location" },
+          { key: "website" },
+          { key: "linkedin" },
+          { key: "company_type" },
+          { key: "company_size" },
+          { key: "status" },
+          { key: "description" },
+        ]}
+        sampleRow={{
+          name: "Acme Corp",
+          industry: "Information Technology",
+          location: "Bengaluru",
+          website: "https://acme.com",
+          linkedin: "https://linkedin.com/company/acme",
+          company_type: "Product",
+          company_size: "201-500",
+          status: "new",
+          description: "Enterprise SaaS recruiter",
+        }}
+        buildPayload={(row) => ({
+          name: row.name?.trim(),
+          industry: row.industry?.trim() || null,
+          location: row.location?.trim() || null,
+          website: row.website?.trim() || null,
+          linkedin: row.linkedin?.trim() || null,
+          company_type: row.company_type?.trim() || null,
+          company_size: row.company_size?.trim() || null,
+          status:
+            COMPANY_STATUSES.includes(row.status?.trim() as CompanyStatus)
+              ? row.status.trim()
+              : "new",
+          description: row.description?.trim() || null,
+        })}
+        onImported={load}
+      />
     </>
   );
 }
