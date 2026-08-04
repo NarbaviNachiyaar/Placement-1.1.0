@@ -11,9 +11,14 @@ import {
   COMPANY_STATUSES,
   COMPANY_TYPES,
   INDUSTRIES,
+  RECRUITER_TYPES,
+  RECRUITER_TYPE_LABEL,
+  SCHOOLS,
   STATUS_LABEL,
   type CompanyStatus,
+  type RecruiterType,
 } from "@/lib/crm";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -41,6 +46,7 @@ const schema = z.object({
   location: z.string().trim().max(120).optional().or(z.literal("")),
   company_size: z.string().optional().or(z.literal("")),
   company_type: z.string().optional().or(z.literal("")),
+  recruiter_type: z.enum(RECRUITER_TYPES),
   linkedin: z.string().trim().max(200).optional().or(z.literal("")),
   status: z.enum(COMPANY_STATUSES),
   description: z.string().trim().max(2000).optional().or(z.literal("")),
@@ -63,6 +69,7 @@ export type CompanyRecord = {
   location: string | null;
   company_size: string | null;
   company_type: string | null;
+  recruiter_type?: string | null;
   linkedin: string | null;
   status: CompanyStatus;
   description: string | null;
@@ -82,10 +89,11 @@ export function CompanyDialog({
 }) {
   const { user } = useAuth();
   const [saving, setSaving] = useState(false);
+  const [departments, setDepartments] = useState<string[]>([]);
 
   const form = useForm<CompanyFormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { status: "new" },
+    defaultValues: { status: "new", recruiter_type: "company" },
   });
 
   useEffect(() => {
@@ -97,6 +105,7 @@ export function CompanyDialog({
       location: company?.location ?? "",
       company_size: company?.company_size ?? "",
       company_type: company?.company_type ?? "",
+      recruiter_type: (company?.recruiter_type as RecruiterType) ?? "company",
       linkedin: company?.linkedin ?? "",
       status: company?.status ?? "new",
       description: company?.description ?? "",
@@ -108,7 +117,23 @@ export function CompanyDialog({
       hr_linkedin: "",
       hr_notes: "",
     });
+    if (company?.id) {
+      db.from("company_departments")
+        .select("department")
+        .eq("company_id", company.id)
+        .then(({ data }) => {
+          setDepartments(((data as { department: string }[]) ?? []).map((d) => d.department));
+        });
+    } else {
+      setDepartments([]);
+    }
   }, [open, company]);
+
+  function toggleDepartment(dept: string) {
+    setDepartments((prev) =>
+      prev.includes(dept) ? prev.filter((d) => d !== dept) : [...prev, dept],
+    );
+  }
 
   async function onSubmit(values: CompanyFormValues) {
     setSaving(true);
@@ -120,6 +145,7 @@ export function CompanyDialog({
         location: values.location || null,
         company_size: values.company_size || null,
         company_type: values.company_type || null,
+        recruiter_type: values.recruiter_type,
         linkedin: values.linkedin || null,
         status: values.status,
         description: values.description || null,
@@ -172,6 +198,16 @@ export function CompanyDialog({
         });
         toast.success("Company added");
       }
+
+      // Sync department mappings: replace whatever was there with the
+      // currently checked set.
+      await db.from("company_departments").delete().eq("company_id", companyId);
+      if (departments.length) {
+        await db.from("company_departments").insert(
+          departments.map((department) => ({ company_id: companyId, department })),
+        );
+      }
+
       onOpenChange(false);
       onSaved?.(companyId!);
     } catch (error) {
@@ -267,6 +303,41 @@ export function CompanyDialog({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label>Recruiter type</Label>
+              <Select
+                value={form.watch("recruiter_type")}
+                onValueChange={(v) => form.setValue("recruiter_type", v as RecruiterType)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select recruiter type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {RECRUITER_TYPES.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {RECRUITER_TYPE_LABEL[r]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Departments / schools recruited for</Label>
+              <div className="mt-1.5 grid gap-2 rounded-xl border p-3 sm:grid-cols-2">
+                {SCHOOLS.map((school) => (
+                  <label
+                    key={school}
+                    className="flex items-center gap-2 text-sm font-normal"
+                  >
+                    <Checkbox
+                      checked={departments.includes(school)}
+                      onCheckedChange={() => toggleDepartment(school)}
+                    />
+                    {school}
+                  </label>
+                ))}
+              </div>
             </div>
             <div>
               <Label>Status</Label>

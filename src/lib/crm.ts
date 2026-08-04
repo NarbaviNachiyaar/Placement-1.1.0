@@ -76,6 +76,31 @@ export const INDUSTRIES = [
 export const COMPANY_SIZES = ["1-50", "51-200", "201-1000", "1001-5000", "5000+"];
 export const COMPANY_TYPES = ["Product", "Service", "Startup", "MNC", "Government", "PSU", "NGO"];
 
+export const RECRUITER_TYPES = [
+  "company",
+  "hospital",
+  "healthcare_organization",
+  "research_institute",
+  "pharmaceutical_company",
+] as const;
+export type RecruiterType = (typeof RECRUITER_TYPES)[number];
+
+export const RECRUITER_TYPE_LABEL: Record<RecruiterType, string> = {
+  company: "Company",
+  hospital: "Hospital",
+  healthcare_organization: "Healthcare Organization",
+  research_institute: "Research Institute",
+  pharmaceutical_company: "Pharmaceutical Company",
+};
+
+/** The university's schools/institutes a recruiter can be mapped to. */
+export const SCHOOLS = [
+  "School of Health Sciences",
+  "School of Technology",
+  "School of Management",
+  "Apollo Institute of Pharmaceutical Sciences",
+];
+
 export function titleCase(value: string) {
   return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }

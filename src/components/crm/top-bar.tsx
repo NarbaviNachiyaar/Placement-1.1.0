@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { Bell, Check, LogOut, Menu, Moon, Search, Sun, User as UserIcon } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { Bell, Check, LogOut, Menu, Moon, Sun, User as UserIcon } from "lucide-react";
 import { db } from "@/lib/data/client";
 import { useAuth, ROLE_LABEL } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { GlobalSearch } from "@/components/crm/global-search";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,9 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { STATUS_LABEL, type CompanyStatus } from "@/lib/crm";
 
-type SearchRow = { id: string; name: string; industry: string | null; status: CompanyStatus };
 type NotificationRow = {
   id: string;
   title: string;
@@ -32,29 +30,7 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   const { profile, role, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<SearchRow[]>([]);
-  const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
-
-  useEffect(() => {
-    if (query.trim().length < 2) {
-      setResults([]);
-      return;
-    }
-    const handle = setTimeout(async () => {
-      const q = `%${query.trim()}%`;
-      const { data } = await db
-        .from("companies")
-        .select("id,name,industry,status")
-        .eq("is_deleted", false)
-        .or(`name.ilike.${q},industry.ilike.${q},location.ilike.${q}`)
-        .limit(8);
-      setResults((data as SearchRow[]) ?? []);
-      setOpen(true);
-    }, 220);
-    return () => clearTimeout(handle);
-  }, [query]);
 
   async function loadNotifications() {
     const { data } = await db
@@ -91,37 +67,8 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
         <Menu className="size-5" />
       </Button>
 
-      <div className="relative max-w-xl flex-1">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onFocus={() => results.length && setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 150)}
-          placeholder="Search companies, industries, locations…"
-          className="rounded-xl border-transparent bg-muted/70 pl-9"
-        />
-        {open && results.length > 0 && (
-          <div className="absolute left-0 right-0 top-12 z-50 overflow-hidden rounded-xl border bg-popover shadow-elevated">
-            {results.map((r) => (
-              <Link
-                key={r.id}
-                to="/companies/$companyId"
-                params={{ companyId: r.id }}
-                className="flex items-center justify-between px-4 py-2.5 text-sm hover:bg-accent"
-                onClick={() => {
-                  setQuery("");
-                  setOpen(false);
-                }}
-              >
-                <span className="font-medium">{r.name}</span>
-                <span className="text-xs text-muted-foreground">
-                  {r.industry ?? "—"} · {STATUS_LABEL[r.status]}
-                </span>
-              </Link>
-            ))}
-          </div>
-        )}
+      <div className="max-w-xl flex-1">
+        <GlobalSearch />
       </div>
 
       <Button

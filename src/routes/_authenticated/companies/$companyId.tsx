@@ -19,11 +19,13 @@ import { logActivity } from "@/lib/activity";
 import {
   MODE_LABEL,
   PRIORITY_TONE,
+  RECRUITER_TYPE_LABEL,
   STATUS_LABEL,
   STATUS_TONE,
   titleCase,
   type CompanyStatus,
   type Mode,
+  type RecruiterType,
   type Priority,
 } from "@/lib/crm";
 import { PageHeader, EmptyState, ListSkeleton } from "@/components/crm/ui-kit";
@@ -73,6 +75,7 @@ type Company = {
   website: string | null;
   status: CompanyStatus;
   company_type: string | null;
+  recruiter_type: string | null;
   company_size: string | null;
   description: string | null;
   linkedin: string | null;
@@ -96,6 +99,7 @@ function CompanyDetail() {
   const { canCreate, canDeleteCompanies, canAddNotes } = usePermissions();
 
   const [company, setCompany] = useState<Company | null>(null);
+  const [departments, setDepartments] = useState<string[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [followups, setFollowups] = useState<Followup[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -107,7 +111,7 @@ function CompanyDetail() {
 
   async function load() {
     setLoading(true);
-    const [{ data: c }, { data: ct }, { data: f }, { data: n }] = await Promise.all([
+    const [{ data: c }, { data: ct }, { data: f }, { data: n }, { data: cd }] = await Promise.all([
       db.from("companies").select("*").eq("id", companyId).maybeSingle(),
       db
         .from("contacts")
@@ -126,11 +130,13 @@ function CompanyDetail() {
         .select("id,content,created_at,created_by")
         .eq("company_id", companyId)
         .order("created_at", { ascending: false }),
+      db.from("company_departments").select("department").eq("company_id", companyId),
     ]);
     setCompany((c as Company) ?? null);
     setContacts((ct as Contact[]) ?? []);
     setFollowups((f as unknown as Followup[]) ?? []);
     setNotes((n as Note[]) ?? []);
+    setDepartments(((cd as { department: string }[]) ?? []).map((d) => d.department));
     setLoading(false);
   }
 
@@ -244,7 +250,17 @@ function CompanyDetail() {
           {STATUS_LABEL[company.status]}
         </Badge>
         {company.company_type && <Badge variant="outline">{company.company_type}</Badge>}
+        {company.recruiter_type && company.recruiter_type !== "company" && (
+          <Badge variant="outline">
+            {RECRUITER_TYPE_LABEL[company.recruiter_type as RecruiterType] ?? company.recruiter_type}
+          </Badge>
+        )}
         {company.company_size && <Badge variant="outline">{company.company_size} employees</Badge>}
+        {departments.map((d) => (
+          <Badge key={d} variant="secondary">
+            {d}
+          </Badge>
+        ))}
         {company.location && (
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <MapPin className="size-3.5" /> {company.location}
