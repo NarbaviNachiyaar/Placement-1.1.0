@@ -19,16 +19,9 @@ create table if not exists public.approved_users (
 
 alter table public.approved_users enable row level security;
 
+drop policy if exists "anon can check approval" on public.approved_users;
 create policy "anon can check approval" on public.approved_users
   for select to anon, authenticated using (true);
-
-create policy "admins manage approved_users" on public.approved_users
-  for all to authenticated using (
-    exists (
-      select 1 from public.user_roles ur
-      where ur.user_id = auth.uid() and ur.role in ('super_admin','admin')
-    )
-  );
 
 -- ── profiles ────────────────────────────────────────────────────────────────
 create table if not exists public.profiles (
@@ -44,9 +37,11 @@ create table if not exists public.profiles (
 
 alter table public.profiles enable row level security;
 
+drop policy if exists "users read own profile" on public.profiles;
 create policy "users read own profile" on public.profiles
   for select to authenticated using (auth.uid() = id);
 
+drop policy if exists "users update own profile" on public.profiles;
 create policy "users update own profile" on public.profiles
   for update to authenticated using (auth.uid() = id);
 
@@ -61,8 +56,21 @@ create table if not exists public.user_roles (
 
 alter table public.user_roles enable row level security;
 
+drop policy if exists "users read own role" on public.user_roles;
 create policy "users read own role" on public.user_roles
   for select to authenticated using (auth.uid() = user_id);
+
+-- Now that user_roles exists, it's safe to create the policy that
+-- references it (this was previously created too early, before the table
+-- it depends on existed — fixed here).
+drop policy if exists "admins manage approved_users" on public.approved_users;
+create policy "admins manage approved_users" on public.approved_users
+  for all to authenticated using (
+    exists (
+      select 1 from public.user_roles ur
+      where ur.user_id = auth.uid() and ur.role in ('super_admin','admin')
+    )
+  );
 
 -- ── auto-provision on signup ─────────────────────────────────────────────────
 -- Mirrors what the old mock startSession() did: create a profile + assign the
