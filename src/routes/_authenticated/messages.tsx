@@ -4,19 +4,20 @@ import { toast } from "sonner";
 import {
   Building2,
   MessageSquarePlus,
+  MoreVertical,
   Paperclip,
+  Pencil,
   Search,
   Send,
   Smile,
+  Trash2,
   Users,
 } from "lucide-react";
 import { db } from "@/lib/data/client";
 import { supabase } from "@/lib/supabase";
-import { useAuth } from "@/lib/auth";
-import { DEPARTMENTS } from "@/lib/crm";
+import { useAuth, usePermissions } from "@/lib/auth";
 import {
   createGroup,
-  getOrCreateDepartmentChat,
   getOrCreateDM,
   markRead,
   type ConversationRow,
@@ -66,6 +67,8 @@ type MessageRow = {
   file_name: string | null;
   file_type: string | null;
   created_at: string;
+  edited_at: string | null;
+  deleted_at: string | null;
 };
 type Participant = { user_id: string; last_read_at: string };
 type ConversationWithMeta = ConversationRow & {
@@ -77,6 +80,7 @@ type ConversationWithMeta = ConversationRow & {
 
 function MessagesPage() {
   const { user, profile } = useAuth();
+  const { isViewer, isSuperAdmin } = usePermissions();
   const [members, setMembers] = useState<Member[]>([]);
   const [conversations, setConversations] = useState<ConversationWithMeta[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -85,6 +89,8 @@ function MessagesPage() {
   const [search, setSearch] = useState("");
   const [sending, setSending] = useState(false);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [groupTitle, setGroupTitle] = useState("");
   const [groupMembers, setGroupMembers] = useState<string[]>([]);
@@ -95,11 +101,14 @@ function MessagesPage() {
   const active = conversations.find((c) => c.id === activeId) ?? null;
 
   async function loadMembers() {
-    const { data } = await db
-      .from("profiles")
-      .select("id,full_name,email,department")
-      .eq("is_active", true);
-    setMembers(((data as Member[]) ?? []).filter((m) => m.id !== user?.id));
+    const { data } = await db.rpc("list_member_directory");
+    const all = ((data as (Member & { role: string | null })[]) ?? []).filter(
+      (m) => m.id !== user?.id,
+    );
+    // Viewers can only message Super Admin — everyone else can message
+    // any active teammate.
+    const visible = isViewer ? all.filter((m) => m.role === "super_admin") : all;
+    setMembers(visible);
   }
 
   async function loadConversations() {
@@ -124,7 +133,7 @@ function MessagesPage() {
         .in("conversation_id", ids),
       db
         .from("messages")
-        .select("id,conversation_id,sender_id,content,file_url,file_name,file_type,created_at")
+        .select("id,conversation_id,sender_id,content,file_url,file_name,file_type,created_at,edited_at,deleted_at")
         .in("conversation_id", ids)
         .order("created_at", { ascending: false }),
     ]);
@@ -175,7 +184,7 @@ function MessagesPage() {
   async function loadMessages(conversationId: string) {
     const { data } = await db
       .from("messages")
-      .select("id,conversation_id,sender_id,content,file_url,file_name,file_type,created_at")
+      .select("id,conversation_id,sender_id,content,file_url,file_name,file_type,created_at,edited_at,deleted_at")
       .eq("conversation_id", conversationId)
       .order("created_at", { ascending: true });
     setMessages((data as MessageRow[]) ?? []);
@@ -278,6 +287,50 @@ function MessagesPage() {
     }
   }
 
+  async function saveEdit(messageId: string) {
+    if (!editDraft.trim()) return;
+    const { error } = await db
+      .from("messages")
+      .update({ content: editDraft.trim(), edited_at: new Date().toISOString() })
+      .eq("id", messageId);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === messageId
+          ? { ...m, content: editDraft.trim(), edited_at: new Date().toISOString() }
+          : m,
+      ),
+    );
+    setEditingId(null);
+    setEditDraft("");
+    void loadConversations();
+  }
+
+  /** Soft delete — "unsend": content is cleared, a "message deleted"
+   *  placeholder shows in its place, matching how most chat apps handle
+   *  unsend rather than silently rewriting history. */
+  async function unsendMessage(messageId: string) {
+    const { error } = await db
+      .from("messages")
+      .update({ deleted_at: new Date().toISOString(), content: null, file_url: null, file_name: null })
+      .eq("id", messageId);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === messageId
+          ? { ...m, deleted_at: new Date().toISOString(), content: null, file_url: null, file_name: null }
+          : m,
+      ),
+    );
+    void loadConversations();
+  }
+
   async function uploadFile(file: File) {
     if (!activeId || !user) return;
     setSending(true);
@@ -309,13 +362,6 @@ function MessagesPage() {
   async function startDM(otherUserId: string) {
     if (!user) return;
     const convo = await getOrCreateDM(user.id, otherUserId);
-    await loadConversations();
-    setActiveId(convo.id);
-  }
-
-  async function startDepartmentChat(department: string) {
-    if (!user) return;
-    const convo = await getOrCreateDepartmentChat(user.id, department);
     await loadConversations();
     setActiveId(convo.id);
   }
@@ -390,14 +436,6 @@ function MessagesPage() {
                     {m.full_name ?? m.email}
                   </DropdownMenuItem>
                 ))}
-                <p className="mt-1 border-t px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                  Department chat
-                </p>
-                {DEPARTMENTS.map((d) => (
-                  <DropdownMenuItem key={d} onClick={() => void startDepartmentChat(d)}>
-                    {d}
-                  </DropdownMenuItem>
-                ))}
                 <div className="border-t p-1">
                   <DropdownMenuItem onClick={() => setGroupDialogOpen(true)}>+ New group</DropdownMenuItem>
                 </div>
@@ -468,8 +506,48 @@ function MessagesPage() {
                   const mine = m.sender_id === user?.id;
                   const senderName =
                     members.find((mem) => mem.id === m.sender_id)?.full_name ?? "Member";
+                  const isEditing = editingId === m.id;
+
+                  if (m.deleted_at) {
+                    return (
+                      <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                        <div className="max-w-[75%] rounded-2xl bg-muted/50 px-3.5 py-2 text-sm italic text-muted-foreground">
+                          This message was deleted
+                        </div>
+                      </div>
+                    );
+                  }
+
                   return (
-                    <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                    <div key={m.id} className={`group flex ${mine ? "justify-end" : "justify-start"}`}>
+                      {mine && !isEditing && (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button className="mr-1 self-center rounded-full p-1 opacity-0 transition-opacity hover:bg-accent group-hover:opacity-100">
+                              <MoreVertical className="size-3.5 text-muted-foreground" />
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent align="end" className="w-36 p-1">
+                            {m.content && (
+                              <button
+                                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent"
+                                onClick={() => {
+                                  setEditingId(m.id);
+                                  setEditDraft(m.content ?? "");
+                                }}
+                              >
+                                <Pencil className="size-3.5" /> Edit
+                              </button>
+                            )}
+                            <button
+                              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-destructive hover:bg-accent"
+                              onClick={() => void unsendMessage(m.id)}
+                            >
+                              <Trash2 className="size-3.5" /> Unsend
+                            </button>
+                          </PopoverContent>
+                        </Popover>
+                      )}
                       <div
                         className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm ${
                           mine ? "gradient-brand text-primary-foreground" : "bg-muted"
@@ -478,28 +556,61 @@ function MessagesPage() {
                         {!mine && active.type !== "dm" && (
                           <p className="mb-0.5 text-[11px] font-semibold opacity-70">{senderName}</p>
                         )}
-                        {m.content && <p className="whitespace-pre-wrap">{m.content}</p>}
-                        {m.file_url && (
-                          <a
-                            href={m.file_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="mt-1 flex items-center gap-1.5 text-xs underline underline-offset-2"
-                          >
-                            <Paperclip className="size-3.5" /> {m.file_name ?? "Attachment"}
-                          </a>
+                        {isEditing ? (
+                          <div className="space-y-1.5">
+                            <Textarea
+                              value={editDraft}
+                              onChange={(e) => setEditDraft(e.target.value)}
+                              className="min-h-[60px] resize-none bg-background text-foreground"
+                            />
+                            <div className="flex justify-end gap-1.5">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => {
+                                  setEditingId(null);
+                                  setEditDraft("");
+                                }}
+                              >
+                                Cancel
+                              </Button>
+                              <Button
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => void saveEdit(m.id)}
+                              >
+                                Save
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            {m.content && <p className="whitespace-pre-wrap">{m.content}</p>}
+                            {m.file_url && (
+                              <a
+                                href={m.file_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mt-1 flex items-center gap-1.5 text-xs underline underline-offset-2"
+                              >
+                                <Paperclip className="size-3.5" /> {m.file_name ?? "Attachment"}
+                              </a>
+                            )}
+                            <p
+                              className={`mt-1 text-[10px] ${
+                                mine ? "text-primary-foreground/70" : "text-muted-foreground"
+                              }`}
+                            >
+                              {new Date(m.created_at).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                              {m.edited_at && " · edited"}
+                              {mine && ` · ${readReceipt(m)}`}
+                            </p>
+                          </>
                         )}
-                        <p
-                          className={`mt-1 text-[10px] ${
-                            mine ? "text-primary-foreground/70" : "text-muted-foreground"
-                          }`}
-                        >
-                          {new Date(m.created_at).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                          {mine && ` · ${readReceipt(m)}`}
-                        </p>
                       </div>
                     </div>
                   );

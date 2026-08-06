@@ -88,7 +88,7 @@ type Approved = { id: string; email: string; role: AppRole; created_at: string }
 
 function TeamPage() {
   const { user } = useAuth();
-  const { canInvite, canChangeRoles, canRemoveUsers, isSuperAdmin } = usePermissions();
+  const { canInvite, canChangeRoles, canRemoveUsers, isSuperAdmin, isManager } = usePermissions();
   const [members, setMembers] = useState<Member[]>([]);
   const [roles, setRoles] = useState<Record<string, AppRole>>({});
   const [approved, setApproved] = useState<Approved[]>([]);
@@ -123,8 +123,9 @@ function TeamPage() {
   }
 
   useEffect(() => {
-    void load();
-  }, []);
+    if (isManager) void load();
+    else setLoading(false);
+  }, [isManager]);
 
   async function invite() {
     const parsed = z.string().trim().email().max(200).safeParse(inviteEmail);
@@ -270,6 +271,19 @@ function TeamPage() {
     if (error) return toast.error(error.message);
     toast.success(`Access revoked for ${email}`);
     void load();
+  }
+
+  if (!isManager) {
+    return (
+      <>
+        <PageHeader title="Team" description="Approved members and their access levels." />
+        <EmptyState
+          icon={Users}
+          title="Restricted"
+          description="Only Super Admin and Admin can view team member details."
+        />
+      </>
+    );
   }
 
   return (

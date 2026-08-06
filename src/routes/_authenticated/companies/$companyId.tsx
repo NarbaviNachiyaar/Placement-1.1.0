@@ -31,6 +31,7 @@ import {
 import { PageHeader, EmptyState, ListSkeleton } from "@/components/crm/ui-kit";
 import { CompanyAssignees } from "@/components/crm/company-assignees";
 import { CompanyDialog } from "@/components/crm/company-dialog";
+import { ContactDialog } from "@/components/crm/contact-dialog";
 import { FollowupDialog, type FollowupRecord } from "@/components/crm/followup-dialog";
 import { VoiceNoteField } from "@/components/crm/voice-note-field";
 import { Badge } from "@/components/ui/badge";
@@ -105,6 +106,7 @@ function CompanyDetail() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
   const [followupOpen, setFollowupOpen] = useState(false);
   const [editingFollowup, setEditingFollowup] = useState<FollowupRecord | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
@@ -342,7 +344,15 @@ function CompanyDetail() {
           )}
         </TabsContent>
 
-        <TabsContent value="contacts" className="mt-4 grid gap-3 md:grid-cols-2">
+        <TabsContent value="contacts" className="mt-4 space-y-3">
+          {canCreate && (
+            <div className="flex justify-end">
+              <Button size="sm" className="rounded-xl" onClick={() => setContactOpen(true)}>
+                <UserRound className="mr-1.5 size-4" /> Add contact
+              </Button>
+            </div>
+          )}
+          <div className="grid gap-3 md:grid-cols-2">
           {contacts.length ? (
             contacts.map((c) => (
               <div key={c.id} className="glass rounded-2xl p-4 shadow-soft">
@@ -376,6 +386,7 @@ function CompanyDetail() {
               <EmptyState icon={UserRound} title="No HR contacts" />
             </div>
           )}
+          </div>
         </TabsContent>
 
         <TabsContent value="notes" className="mt-4 space-y-4">
@@ -410,6 +421,12 @@ function CompanyDetail() {
         open={editOpen}
         onOpenChange={setEditOpen}
         company={company}
+        onSaved={load}
+      />
+      <ContactDialog
+        open={contactOpen}
+        onOpenChange={setContactOpen}
+        companyId={companyId}
         onSaved={load}
       />
       <FollowupDialog

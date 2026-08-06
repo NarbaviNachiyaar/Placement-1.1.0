@@ -866,3 +866,206 @@ create policy "users self-provision approved role" on public.user_roles
     )
   );
 
+-- ---------- 0011_fix_profiles_read_policy.sql ----------
+-- Run in Supabase SQL Editor after previous migrations.
+--
+-- Bug: profiles' SELECT policy only allowed auth.uid() = id — meaning each
+-- person could only ever see their OWN profile row, never their
+-- teammates'. That's why the Team page's "Members" list appeared empty or
+-- missing people even though they'd successfully signed in — the database
+-- was silently filtering every other row out.
+
+drop policy if exists "users read own profile" on public.profiles;
+drop policy if exists "authenticated read all profiles" on public.profiles;
+create policy "authenticated read all profiles" on public.profiles
+  for select to authenticated using (true);
+
+-- Keep updates scoped to your own profile only (unchanged, still correct).
+
+-- ---------- 0012_fix_conversation_create_race.sql ----------
+-- Run in Supabase SQL Editor after previous migrations.
+--
+-- Bug: creating any conversation (DM, group, department chat, company
+-- thread) silently failed. The code creates the conversation row, then
+-- immediately reads it back to get its ID, THEN adds participants — but
+-- the old SELECT policy only allowed participants to see a conversation,
+-- and at that read-back moment no participant rows exist yet. This adds
+-- "or you created it" as an alternate path, so the read-back succeeds.
+
+drop policy if exists "participants read their conversations" on public.conversations;
+create policy "participants read their conversations" on public.conversations
+  for select to authenticated using (
+    created_by = auth.uid()
+    or exists (
+      select 1 from public.conversation_participants cp
+      where cp.conversation_id = id and cp.user_id = auth.uid()
+    )
+  );
+
+-- ---------- 0013_fix_conversation_rls_recursion.sql ----------
+-- Run in Supabase SQL Editor after previous migrations.
+--
+-- Bug: "infinite recursion detected in policy for relation
+-- conversation_participants". The old policy checked membership by
+-- querying conversation_participants FROM WITHIN a policy that protects
+-- conversation_participants itself — Postgres has to re-evaluate the same
+-- policy to answer that question, forever. This cascaded into failures on
+-- conversations and messages too, since their policies check membership
+-- via this same broken table.
+--
+-- Fix: move the membership check into a SECURITY DEFINER function. Functions
+-- like this run with elevated privileges that bypass RLS internally, so the
+-- self-reference no longer loops.
+
+create or replace function public.is_conversation_participant(conv_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.conversation_participants
+    where conversation_id = conv_id and user_id = auth.uid()
+  );
+$$;
+
+grant execute on function public.is_conversation_participant(uuid) to authenticated;
+
+drop policy if exists "see participants of own conversations" on public.conversation_participants;
+create policy "see participants of own conversations" on public.conversation_participants
+  for select to authenticated using (
+    public.is_conversation_participant(conversation_id)
+  );
+
+-- Also route the conversations and messages policies through the same
+-- helper, so everything shares one non-recursive source of truth.
+drop policy if exists "participants read their conversations" on public.conversations;
+create policy "participants read their conversations" on public.conversations
+  for select to authenticated using (
+    created_by = auth.uid() or public.is_conversation_participant(id)
+  );
+
+drop policy if exists "participants read messages" on public.messages;
+create policy "participants read messages" on public.messages
+  for select to authenticated using (
+    public.is_conversation_participant(conversation_id)
+  );
+
+drop policy if exists "participants send messages" on public.messages;
+create policy "participants send messages" on public.messages
+  for insert to authenticated with check (
+    sender_id = auth.uid() and public.is_conversation_participant(conversation_id)
+  );
+
+-- ---------- 0014_permissions_and_features.sql ----------
+-- Run in Supabase SQL Editor after previous migrations.
+
+-- ── #12 fix: company_assignments.assigned_by was referenced by the app
+--    code but never existed as a column ──────────────────────────────────
+alter table public.company_assignments
+  add column if not exists assigned_by uuid references public.profiles (id);
+
+-- ── #2 fix: HR contact details should only be visible to managers/faculty
+--    and to coordinators who are actually assigned to that company — not
+--    to every coordinator. Companies themselves stay read-all (coordinators
+--    can still browse the company list), just not the HR contact info.
+drop policy if exists "authenticated full access" on public.contacts;
+drop policy if exists "contacts visible to assigned or managers" on public.contacts;
+create policy "contacts visible to assigned or managers" on public.contacts
+  for select to authenticated using (
+    public.is_admin_or_above()
+    or exists (
+      select 1 from public.company_assignments ca
+      where ca.company_id = contacts.company_id and ca.user_id = auth.uid()
+    )
+  );
+
+drop policy if exists "contacts write access" on public.contacts;
+create policy "contacts write access" on public.contacts
+  for all to authenticated using (
+    public.is_admin_or_above()
+    or exists (
+      select 1 from public.company_assignments ca
+      where ca.company_id = contacts.company_id and ca.user_id = auth.uid()
+    )
+  ) with check (
+    public.is_admin_or_above()
+    or exists (
+      select 1 from public.company_assignments ca
+      where ca.company_id = contacts.company_id and ca.user_id = auth.uid()
+    )
+  );
+
+-- ── #3: message edit / unsend (soft delete) ─────────────────────────────
+alter table public.messages
+  add column if not exists edited_at timestamptz,
+  add column if not exists deleted_at timestamptz;
+
+drop policy if exists "senders edit own messages" on public.messages;
+create policy "senders edit own messages" on public.messages
+  for update to authenticated using (sender_id = auth.uid())
+  with check (sender_id = auth.uid());
+
+grant update on public.messages to authenticated;
+
+-- ── #7 / #11: Announcements — visible to everyone, postable by everyone,
+--    deletable by the author or a Super Admin ──────────────────────────
+create table if not exists public.announcements (
+  id uuid primary key default gen_random_uuid(),
+  author_id uuid references public.profiles (id) on delete set null,
+  content text not null,
+  image_url text,
+  created_at timestamptz not null default now()
+);
+
+alter table public.announcements enable row level security;
+
+drop policy if exists "everyone reads announcements" on public.announcements;
+create policy "everyone reads announcements" on public.announcements
+  for select to authenticated using (true);
+
+drop policy if exists "everyone can post announcements" on public.announcements;
+create policy "everyone can post announcements" on public.announcements
+  for insert to authenticated with check (author_id = auth.uid());
+
+drop policy if exists "author or super admin deletes announcement" on public.announcements;
+create policy "author or super admin deletes announcement" on public.announcements
+  for delete to authenticated using (
+    author_id = auth.uid() or public.is_super_admin()
+  );
+
+grant select, insert, delete on public.announcements to authenticated;
+
+-- ── #1: the FULL profiles table (address, DOB, parent info, phone, etc.)
+--    should only be browsable by Super Admin + Admin, or your own row.
+--    Messaging and search still need to look SOMEONE up by name to
+--    contact them, so we expose a narrow, safe "directory" via a function
+--    instead of opening the whole table back up.
+drop policy if exists "authenticated read all profiles" on public.profiles;
+create policy "authenticated read all profiles" on public.profiles
+  for select to authenticated using (
+    id = auth.uid() or public.is_admin_or_above()
+  );
+
+create or replace function public.list_member_directory(search text default null)
+returns table (id uuid, full_name text, email text, department text, is_active boolean, role text)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select p.id, p.full_name, p.email, p.department, p.is_active, ur.role
+  from public.profiles p
+  left join public.user_roles ur on ur.user_id = p.id
+  where p.is_active = true
+    and (
+      search is null or search = ''
+      or p.full_name ilike '%' || search || '%'
+      or p.email ilike '%' || search || '%'
+    )
+  order by p.full_name;
+$$;
+
+grant execute on function public.list_member_directory(text) to authenticated;
+
