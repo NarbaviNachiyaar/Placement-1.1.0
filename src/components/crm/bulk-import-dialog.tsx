@@ -52,6 +52,10 @@ export type BulkImportDialogProps = {
   /** Turn a raw parsed row into the exact payload sent to Supabase. */
   buildPayload: (row: Record<string, string>) => Record<string, unknown>;
   onImported: () => void;
+  /** Optional: called after each successful insert with the inserted row
+   *  and the raw parsed row, for side effects like creating a related
+   *  assignment record. */
+  afterRowInsert?: (insertedRow: Record<string, unknown>, rawRow: Record<string, string>) => Promise<void>;
 };
 
 type ParsedRow = {
@@ -71,6 +75,7 @@ export function BulkImportDialog({
   existingValues,
   buildPayload,
   onImported,
+  afterRowInsert,
 }: BulkImportDialogProps) {
   const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -165,8 +170,16 @@ export function BulkImportDialog({
     try {
       for (let i = 0; i < insertBatch.length; i++) {
         const payload = buildPayload(insertBatch[i].raw);
-        const { error } = await db.from(table).insert(payload);
-        if (!error) inserted++;
+        if (afterRowInsert) {
+          const { data, error } = await db.from(table).insert(payload).select("*").single();
+          if (!error && data) {
+            inserted++;
+            await afterRowInsert(data as Record<string, unknown>, insertBatch[i].raw);
+          }
+        } else {
+          const { error } = await db.from(table).insert(payload);
+          if (!error) inserted++;
+        }
         setProgress(Math.round(((i + 1) / total) * 100));
       }
 

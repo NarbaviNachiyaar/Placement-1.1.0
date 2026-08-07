@@ -284,7 +284,7 @@ function CompanyDetail() {
         <p className="text-sm text-muted-foreground">{company.description}</p>
       )}
 
-      <CompanyAssignees companyId={companyId} />
+      <CompanyAssignees companyId={companyId} companyName={company.name} />
 
       <Tabs defaultValue="followups">
         <TabsList>

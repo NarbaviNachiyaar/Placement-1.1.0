@@ -3,7 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Building2, Download, Plus, Search, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/data/client";
-import { usePermissions } from "@/lib/auth";
+import { useAuth, usePermissions } from "@/lib/auth";
 import {
   COMPANY_STATUSES,
   INDUSTRIES,
@@ -15,6 +15,7 @@ import { exportCsv, exportExcel, exportPdf } from "@/lib/export";
 import { PageHeader, EmptyState, ListSkeleton } from "@/components/crm/ui-kit";
 import { CompanyDialog } from "@/components/crm/company-dialog";
 import { BulkImportDialog } from "@/components/crm/bulk-import-dialog";
+import { createCompanyAssignmentTask } from "@/lib/company-tasks";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,7 +64,8 @@ type Row = {
 };
 
 function CompaniesPage() {
-  const { canCreate } = usePermissions();
+  const { canCreate, canBulkImport } = usePermissions();
+  const { user } = useAuth();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -142,7 +144,7 @@ function CompaniesPage() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            {canCreate && (
+            {canBulkImport && (
               <Button
                 variant="outline"
                 className="rounded-xl"
@@ -263,6 +265,7 @@ function CompaniesPage() {
           { key: "company_size" },
           { key: "status" },
           { key: "description" },
+          { key: "assign_to_email" },
         ]}
         sampleRow={{
           name: "Acme Corp",
@@ -274,6 +277,7 @@ function CompaniesPage() {
           company_size: "201-500",
           status: "new",
           description: "Enterprise SaaS recruiter",
+          assign_to_email: "coordinator@apollouniversity.edu.in",
         }}
         buildPayload={(row) => ({
           name: row.name?.trim(),
@@ -289,6 +293,27 @@ function CompaniesPage() {
               : "new",
           description: row.description?.trim() || null,
         })}
+        afterRowInsert={async (insertedRow, rawRow) => {
+          const email = rawRow.assign_to_email?.trim().toLowerCase();
+          if (!email) return;
+          const { data: person } = await db
+            .from("profiles")
+            .select("id")
+            .eq("email", email)
+            .maybeSingle();
+          if (!person) return;
+          await db.from("company_assignments").insert({
+            company_id: (insertedRow as { id: string }).id,
+            user_id: (person as { id: string }).id,
+            assigned_by: user?.id ?? null,
+          });
+          await createCompanyAssignmentTask({
+            companyId: (insertedRow as { id: string }).id,
+            companyName: (insertedRow as { name: string }).name,
+            assignedTo: (person as { id: string }).id,
+            assignedBy: user?.id,
+          });
+        }}
         onImported={load}
       />
     </>

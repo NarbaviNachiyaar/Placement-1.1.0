@@ -4,6 +4,7 @@ import { UserCheck } from "lucide-react";
 import { db } from "@/lib/data/client";
 import { useAuth, usePermissions } from "@/lib/auth";
 import { notify } from "@/lib/activity";
+import { createCompanyAssignmentTask } from "@/lib/company-tasks";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,7 +18,13 @@ import {
 type Member = { id: string; full_name: string | null; email: string };
 
 /** Assign one or many coordinators to a company. Admins/Super Admins only. */
-export function CompanyAssignees({ companyId }: { companyId: string }) {
+export function CompanyAssignees({
+  companyId,
+  companyName,
+}: {
+  companyId: string;
+  companyName: string;
+}) {
   const { user } = useAuth();
   const { canAssign } = usePermissions();
   const [members, setMembers] = useState<Member[]>([]);
@@ -52,6 +59,12 @@ export function CompanyAssignees({ companyId }: { companyId: string }) {
       created_at: new Date().toISOString(),
     });
     if (error) return toast.error(error.message);
+    await createCompanyAssignmentTask({
+      companyId,
+      companyName,
+      assignedTo: pick,
+      assignedBy: user?.id,
+    });
     await notify({
       userId: pick,
       title: "Company assigned to you",

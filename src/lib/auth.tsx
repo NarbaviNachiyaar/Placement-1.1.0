@@ -71,12 +71,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setRole(null);
       return;
     }
-    const [{ data: p }, { data: r }] = await Promise.all([
+    let [{ data: p }, { data: r }] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
       supabase.from("user_roles").select("role").eq("user_id", userId).limit(1).maybeSingle(),
     ]);
+
+    // Self-heal: this happens whenever the DB-trigger-based auto-provision
+    // never ran for this account — most commonly because the auth account
+    // already existed before profiles/user_roles were (re)created, so the
+    // "new user" trigger never fired for them. Rather than leaving the
+    // person stuck with a blank profile and no role, create what's missing
+    // right here, looking up their intended role from approved_users.
+    if (!p || !r) {
+      const { data: authUser } = await supabase.auth.getUser();
+      const email = authUser.user?.email ?? "";
+
+      if (!p) {
+        const { data: created } = await supabase
+          .from("profiles")
+          .upsert(
+            { id: userId, email, full_name: email.split("@")[0], last_login: new Date().toISOString() },
+            { onConflict: "id" },
+          )
+          .select("*")
+          .maybeSingle();
+        p = created;
+      }
+
+      if (!r) {
+        const { data: approved } = await supabase
+          .from("approved_users")
+          .select("role")
+          .eq("email", email.toLowerCase())
+          .maybeSingle();
+        const roleToAssign = approved?.role ?? "viewer";
+        const { data: createdRole } = await supabase
+          .from("user_roles")
+          .upsert({ user_id: userId, role: roleToAssign }, { onConflict: "user_id,role" })
+          .select("role")
+          .maybeSingle();
+        r = createdRole;
+      }
+    }
+
     setProfile((p as unknown as Profile) ?? null);
     setRole(((r?.role as AppRole) ?? null) as AppRole | null);
+
+    // Revoked accounts must not keep using the app just because their
+    // browser session hasn't expired yet.
+    if (p && (p as unknown as Profile).is_active === false) {
+      await auth.signOut();
+      setSession(null);
+      setProfile(null);
+      setRole(null);
+    }
   }
 
   useEffect(() => {
@@ -94,9 +142,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (mounted) setLoading(false);
     });
 
+    // Re-verify access every couple of minutes for sessions that were
+    // already open when an admin revoked them — otherwise a revoked
+    // person could stay logged in until their token happens to expire.
+    const interval = setInterval(() => {
+      void supabase.auth.getUser().then(({ data }) => {
+        if (mounted && data.user) void load(data.user.id);
+      });
+    }, 120_000);
+
     return () => {
       mounted = false;
       sub.unsubscribe();
+      clearInterval(interval);
     };
   }, []);
 
@@ -156,6 +214,7 @@ export function usePermissions() {
     canDeleteCompanies: isManager, // super_admin + admin only, not faculty
     canViewAllCompanies: true, // everyone can at least read every company
     canAssignCompanies: isManager,
+    canBulkImport: isManager, // only super_admin + admin, per explicit request
 
     // ── Follow-ups ─────────────────────────────────────────────────────────
     canCreateFollowups: isElevatedStaff || isCoordinator, // coordinators: assigned companies only, enforced per-row
