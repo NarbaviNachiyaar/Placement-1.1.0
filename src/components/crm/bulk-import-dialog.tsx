@@ -221,7 +221,7 @@ export function BulkImportDialog({
         if (!v) reset();
       }}
     >
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Bulk import {entityLabel.toLowerCase()}</DialogTitle>
           <DialogDescription>
@@ -356,7 +356,7 @@ export function BulkImportDialog({
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="sticky bottom-0 -mx-6 -mb-6 border-t bg-background px-6 py-4">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {result ? "Close" : "Cancel"}
           </Button>

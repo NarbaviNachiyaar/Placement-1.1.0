@@ -107,7 +107,9 @@ function MessagesPage() {
     );
     // Viewers can only message Super Admin — everyone else can message
     // any active teammate.
-    const visible = isViewer ? all.filter((m) => m.role === "super_admin") : all;
+    const visible = isViewer
+      ? all.filter((m) => m.role === "super_admin" || m.role === "admin")
+      : all;
     setMembers(visible);
   }
 
