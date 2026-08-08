@@ -26,7 +26,10 @@ export async function notify(params: {
   title: string;
   body?: string;
   type?: string;
+  /** Real, navigable route the notification should open when clicked. */
   link?: string;
+  /** Internal-only key for skipping duplicate reminders. Never used for navigation. */
+  dedupeKey?: string;
 }) {
   await db.from("notifications").insert({
     user_id: params.userId,
@@ -34,5 +37,6 @@ export async function notify(params: {
     body: params.body ?? null,
     type: params.type ?? "info",
     link: params.link ?? null,
+    dedupe_key: params.dedupeKey ?? null,
   });
 }

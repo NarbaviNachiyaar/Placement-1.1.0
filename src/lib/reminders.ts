@@ -22,15 +22,14 @@ export async function runReminderCheck(userId: string) {
       .eq("assigned_to", userId)
       .neq("status", "completed")
       .lte("deadline", today),
-    db.from("notifications").select("link").eq("user_id", userId).eq("type", "reminder"),
+    db.from("notifications").select("dedupe_key").eq("user_id", userId).eq("type", "reminder"),
   ]);
 
   const alreadyNotified = new Set(
-    ((existing as { link: string | null }[]) ?? []).map((n) => n.link).filter(Boolean),
+    ((existing as { dedupe_key: string | null }[]) ?? []).map((n) => n.dedupe_key).filter(Boolean),
   );
 
   for (const f of (followups as { id: string; company_id: string; followup_date: string; message: string | null }[]) ?? []) {
-    const link = `/companies/${f.company_id}`;
     const key = `followup:${f.id}`;
     if (alreadyNotified.has(key)) continue;
     const overdue = f.followup_date < today;
@@ -39,7 +38,8 @@ export async function runReminderCheck(userId: string) {
       title: overdue ? "Follow-up overdue" : "Follow-up due today",
       body: f.message ?? undefined,
       type: "reminder",
-      link: key,
+      link: `/companies/${f.company_id}`,
+      dedupeKey: key,
     });
   }
 
@@ -52,7 +52,8 @@ export async function runReminderCheck(userId: string) {
       userId,
       title: overdue ? `Task overdue: ${t.title}` : `Task due today: ${t.title}`,
       type: "reminder",
-      link: key,
+      link: "/tasks",
+      dedupeKey: key,
     });
   }
 }

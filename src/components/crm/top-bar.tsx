@@ -22,6 +22,7 @@ type NotificationRow = {
   id: string;
   title: string;
   body: string | null;
+  link: string | null;
   is_read: boolean;
   created_at: string;
 };
@@ -31,11 +32,12 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
+  const [notifOpen, setNotifOpen] = useState(false);
 
   async function loadNotifications() {
     const { data } = await db
       .from("notifications")
-      .select("id,title,body,is_read,created_at")
+      .select("id,title,body,link,is_read,created_at")
       .order("created_at", { ascending: false })
       .limit(15);
     setNotifications((data as NotificationRow[]) ?? []);
@@ -52,6 +54,15 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
     if (!ids.length) return;
     await db.from("notifications").update({ is_read: true }).in("id", ids);
     void loadNotifications();
+  }
+
+  async function openNotification(n: NotificationRow) {
+    if (!n.is_read) {
+      await db.from("notifications").update({ is_read: true }).eq("id", n.id);
+      void loadNotifications();
+    }
+    setNotifOpen(false);
+    if (n.link) navigate({ to: n.link });
   }
 
   const initials = (profile?.full_name || profile?.email || "?")
@@ -80,7 +91,7 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
         {theme === "dark" ? <Sun className="size-5" /> : <Moon className="size-5" />}
       </Button>
 
-      <Popover>
+      <Popover open={notifOpen} onOpenChange={setNotifOpen}>
         <PopoverTrigger asChild>
           <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
             <Bell className="size-5" />
@@ -105,7 +116,11 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
               </p>
             )}
             {notifications.map((n) => (
-              <div key={n.id} className="border-b px-4 py-3 last:border-0">
+              <button
+                key={n.id}
+                onClick={() => void openNotification(n)}
+                className="block w-full border-b px-4 py-3 text-left transition-colors last:border-0 hover:bg-accent"
+              >
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-sm font-medium">{n.title}</p>
                   {!n.is_read && <Badge className="shrink-0 text-[10px]">New</Badge>}
@@ -114,7 +129,7 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
                 <p className="mt-1 text-[11px] text-muted-foreground">
                   {new Date(n.created_at).toLocaleString()}
                 </p>
-              </div>
+              </button>
             ))}
           </div>
         </PopoverContent>

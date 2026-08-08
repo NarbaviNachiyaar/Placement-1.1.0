@@ -194,10 +194,10 @@ export function usePermissions() {
   const isCoordinator = role === "coordinator";
   const isViewer = role === "viewer";
 
-  // "Elevated staff" = everyone who can create/manage placement work
-  // (super_admin, admin, faculty) as opposed to coordinators, who only
-  // manage their own assigned slice, and viewers, who are read-only.
-  const isElevatedStaff = isManager || isFaculty;
+  // Faculty is strictly view-only across the whole app — they can see
+  // everything a manager can, but never create/edit/delete anything,
+  // not even their own past work.
+  const isElevatedStaff = isManager; // no longer includes faculty
 
   return {
     role,
@@ -211,10 +211,10 @@ export function usePermissions() {
     // ── Companies ──────────────────────────────────────────────────────────
     canCreateCompanies: isElevatedStaff,
     canEditCompanies: isElevatedStaff,
-    canDeleteCompanies: isManager, // super_admin + admin only, not faculty
+    canDeleteCompanies: isManager, // super_admin + admin only
     canViewAllCompanies: true, // everyone can at least read every company
     canAssignCompanies: isManager,
-    canBulkImport: isManager, // only super_admin + admin, per explicit request
+    canBulkImport: isManager, // only super_admin + admin
 
     // ── Follow-ups ─────────────────────────────────────────────────────────
     canCreateFollowups: isElevatedStaff || isCoordinator, // coordinators: assigned companies only, enforced per-row
@@ -223,14 +223,14 @@ export function usePermissions() {
 
     // ── Tasks ──────────────────────────────────────────────────────────────
     canCreateTasks: isElevatedStaff,
-    canAssignTasks: isManager || isFaculty, // faculty can assign to coordinators
-    canReviewTasks: isManager || isFaculty,
+    canAssignTasks: isManager, // faculty view-only, cannot assign
+    canReviewTasks: isManager,
     canUpdateOwnTaskStatus: true, // everyone (incl. coordinators) can update tasks assigned to them
 
     // ── Notes / uploads / voice ──────────────────────────────────────────────
-    canAddNotes: !isViewer,
-    canUploadDocuments: !isViewer,
-    canUseVoiceToText: !isViewer,
+    canAddNotes: !isViewer && !isFaculty,
+    canUploadDocuments: !isViewer && !isFaculty,
+    canUseVoiceToText: !isViewer && !isFaculty,
 
     // ── Team / users ───────────────────────────────────────────────────────
     canInvite: isManager, // super_admin + admin can invite
@@ -241,7 +241,7 @@ export function usePermissions() {
     canEditOthersWork: isSuperAdmin, // overwrite/edit another user's records directly
 
     // ── Reports / logs / admin ────────────────────────────────────────────
-    canViewReports: isElevatedStaff,
+    canViewReports: isManager || isFaculty, // faculty can still VIEW reports
     canViewActivityLogs: isSuperAdmin,
     canViewAuditLogs: isSuperAdmin,
     canExportActivityLogs: isSuperAdmin,
@@ -255,6 +255,6 @@ export function usePermissions() {
     canCreate: isElevatedStaff || isCoordinator,
     canDelete: isSuperAdmin,
     canAssign: isManager,
-    readOnly: isViewer,
+    readOnly: isViewer || isFaculty,
   };
 }

@@ -1,12 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Download, History, ShieldAlert } from "lucide-react";
+import { Download, History, Search, ShieldAlert } from "lucide-react";
 import { db } from "@/lib/data/client";
 import { usePermissions } from "@/lib/auth";
 import { exportCsv, exportExcel } from "@/lib/export";
 import { PageHeader, EmptyState, ListSkeleton } from "@/components/crm/ui-kit";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,6 +43,17 @@ function ActivityPage() {
   const { canViewActivityLogs, canExportActivityLogs } = usePermissions();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) =>
+      [r.action, r.details, r.entity_type, r.user_email]
+        .filter(Boolean)
+        .some((v) => v!.toLowerCase().includes(q)),
+    );
+  }, [rows, search]);
 
   useEffect(() => {
     if (!canViewActivityLogs) {
@@ -110,11 +122,22 @@ function ActivityPage() {
           ) : null
         }
       />
+
+      <div className="relative max-w-sm">
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search activity…"
+          className="rounded-xl pl-9"
+        />
+      </div>
+
       {loading ? (
         <ListSkeleton />
-      ) : rows.length ? (
+      ) : filteredRows.length ? (
         <ul className="glass divide-y rounded-2xl p-2 shadow-soft">
-          {rows.map((r) => (
+          {filteredRows.map((r) => (
             <li key={r.id} className="flex flex-wrap items-center gap-3 p-3">
               <Badge variant="outline" className="shrink-0">
                 {r.action}

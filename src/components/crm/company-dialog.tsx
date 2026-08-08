@@ -156,6 +156,18 @@ export function CompanyDialog({
       if (companyId) {
         const { error } = await db.from("companies").update(payload).eq("id", companyId);
         if (error) throw error;
+
+        // A company that's finished (hired) or fallen through (rejected)
+        // shouldn't leave its work-in-progress tasks sitting in anyone's
+        // active task list — close them out automatically.
+        if (values.status === "hired" || values.status === "rejected") {
+          await db
+            .from("tasks")
+            .update({ status: "completed", completed_at: new Date().toISOString() })
+            .eq("company_id", companyId)
+            .neq("status", "completed");
+        }
+
         await logActivity({
           userId: user?.id,
           userEmail: user?.email,

@@ -18,6 +18,7 @@ export function useSpeechToText() {
   const [error, setError] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const baseRef = useRef("");
+  const intentionalStopRef = useRef(false);
 
   useEffect(() => {
     const w = window as unknown as {
@@ -25,21 +26,19 @@ export function useSpeechToText() {
       webkitSpeechRecognition?: new () => SpeechRecognitionLike;
     };
     setSupported(Boolean(w.SpeechRecognition || w.webkitSpeechRecognition));
-    return () => recognitionRef.current?.stop();
+    return () => {
+      intentionalStopRef.current = true;
+      recognitionRef.current?.stop();
+    };
   }, []);
 
-  const start = useCallback((initial = "") => {
+  const createRecognition = useCallback(() => {
     const w = window as unknown as {
       SpeechRecognition?: new () => SpeechRecognitionLike;
       webkitSpeechRecognition?: new () => SpeechRecognitionLike;
     };
     const Ctor = w.SpeechRecognition || w.webkitSpeechRecognition;
-    if (!Ctor) {
-      setError("Voice recognition is not supported in this browser.");
-      return;
-    }
-    setError(null);
-    baseRef.current = initial ? initial.trimEnd() + " " : "";
+    if (!Ctor) return null;
     const recognition = new Ctor();
     recognition.lang = "en-IN";
     recognition.continuous = true;
@@ -50,16 +49,54 @@ export function useSpeechToText() {
       setTranscript(baseRef.current + text);
     };
     recognition.onerror = (event) => {
-      setError(event.error === "not-allowed" ? "Microphone permission denied." : event.error);
+      // "no-speech" fires constantly during natural pauses while talking —
+      // not a real error, so don't surface it or stop listening for it.
+      if (event.error === "no-speech") return;
+      intentionalStopRef.current = true;
+      setError(event.error === "not-allowed" ? "Microphone permission denied." : `Voice recognition error: ${event.error}`);
       setRecording(false);
     };
-    recognition.onend = () => setRecording(false);
-    recognitionRef.current = recognition;
-    recognition.start();
-    setRecording(true);
+    recognition.onend = () => {
+      // Chrome silently ends recognition after a short pause even with
+      // continuous:true. If the user didn't ask us to stop, keep going
+      // instead of leaving them stuck on a dead "Listening…" state.
+      if (intentionalStopRef.current) {
+        setRecording(false);
+        return;
+      }
+      try {
+        recognition.start();
+      } catch {
+        setRecording(false);
+      }
+    };
+    return recognition;
   }, []);
 
+  const start = useCallback(
+    (initial = "") => {
+      const recognition = createRecognition();
+      if (!recognition) {
+        setError("Voice recognition is not supported in this browser.");
+        return;
+      }
+      setError(null);
+      intentionalStopRef.current = false;
+      baseRef.current = initial ? initial.trimEnd() + " " : "";
+      recognitionRef.current = recognition;
+      try {
+        recognition.start();
+        setRecording(true);
+      } catch {
+        setError("Could not start the microphone. Try again.");
+        setRecording(false);
+      }
+    },
+    [createRecognition],
+  );
+
   const stop = useCallback(() => {
+    intentionalStopRef.current = true;
     recognitionRef.current?.stop();
     setRecording(false);
   }, []);

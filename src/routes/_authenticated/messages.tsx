@@ -208,8 +208,28 @@ function MessagesPage() {
 
   useEffect(() => {
     if (activeId) void loadMessages(activeId);
+    // Restore whatever was half-typed for this conversation, so switching
+    // away and back (or navigating elsewhere) doesn't lose it.
+    if (activeId) {
+      try {
+        setDraft(sessionStorage.getItem(`draft:${activeId}`) ?? "");
+      } catch {
+        /* sessionStorage unavailable — just start blank */
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
+
+  // Save the draft as the person types, keyed per conversation.
+  useEffect(() => {
+    if (!activeId) return;
+    try {
+      if (draft) sessionStorage.setItem(`draft:${activeId}`, draft);
+      else sessionStorage.removeItem(`draft:${activeId}`);
+    } catch {
+      /* sessionStorage unavailable — draft just won't persist */
+    }
+  }, [draft, activeId]);
 
   // Live message delivery for the open conversation.
   useEffect(() => {

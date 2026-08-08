@@ -296,21 +296,20 @@ function CompaniesPage() {
         afterRowInsert={async (insertedRow, rawRow) => {
           const email = rawRow.assign_to_email?.trim().toLowerCase();
           if (!email) return;
-          const { data: person } = await db
-            .from("profiles")
-            .select("id")
-            .eq("email", email)
-            .maybeSingle();
-          if (!person) return;
+          const { data: people } = await db.rpc("list_member_directory", { search: email });
+          const person = ((people as { id: string; email: string; role: string | null }[]) ?? []).find(
+            (p) => p.email.toLowerCase() === email && p.role === "coordinator",
+          );
+          if (!person) return; // silently skip — not found, or not a coordinator
           await db.from("company_assignments").insert({
             company_id: (insertedRow as { id: string }).id,
-            user_id: (person as { id: string }).id,
+            user_id: person.id,
             assigned_by: user?.id ?? null,
           });
           await createCompanyAssignmentTask({
             companyId: (insertedRow as { id: string }).id,
             companyName: (insertedRow as { name: string }).name,
-            assignedTo: (person as { id: string }).id,
+            assignedTo: person.id,
             assignedBy: user?.id,
           });
         }}

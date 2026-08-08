@@ -33,10 +33,13 @@ export function CompanyAssignees({
 
   async function load() {
     const [{ data: p }, { data: a }] = await Promise.all([
-      db.from("profiles").select("id,full_name,email").order("full_name", { ascending: true }),
+      db.rpc("list_member_directory"),
       db.from("company_assignments").select("*").eq("company_id", companyId),
     ]);
-    setMembers((p as unknown as Member[]) ?? []);
+    const coordinatorsOnly = ((p as (Member & { role: string | null })[]) ?? []).filter(
+      (m) => m.role === "coordinator",
+    );
+    setMembers(coordinatorsOnly);
     setAssigned(((a as unknown as { user_id: string }[]) ?? []).map((r) => r.user_id));
   }
 

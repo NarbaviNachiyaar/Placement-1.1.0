@@ -124,7 +124,8 @@ function AnnouncementsPage() {
         description="Share achievements, updates, and wins with the whole team."
       />
 
-      <div className="glass max-w-2xl space-y-3 rounded-2xl p-5 shadow-soft">
+      <div className="mx-auto flex max-w-2xl flex-col gap-6">
+      <div className="glass space-y-3 rounded-2xl p-5 shadow-soft">
         <Textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -170,7 +171,7 @@ function AnnouncementsPage() {
         </div>
       </div>
 
-      <div className="max-w-2xl space-y-3">
+      <div className="space-y-3">
         {loading ? null : posts.length === 0 ? (
           <EmptyState
             icon={Megaphone}
@@ -217,6 +218,7 @@ function AnnouncementsPage() {
             );
           })
         )}
+      </div>
       </div>
     </>
   );

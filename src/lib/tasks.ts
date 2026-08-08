@@ -50,23 +50,22 @@ export function taskAbilities(
 ) {
   const isSuperAdmin = role === "super_admin";
   const isAdmin = role === "admin";
-  const isFaculty = role === "faculty";
   const isCoordinator = role === "coordinator";
-  const isManagerOrFaculty = isSuperAdmin || isAdmin || isFaculty;
+  const isManager = isSuperAdmin || isAdmin; // faculty no longer included
   const isOwner = Boolean(task && userId && task.assigned_to === userId);
 
   return {
-    canCreate: isManagerOrFaculty,
-    canAssignAnyone: isSuperAdmin || isAdmin,
-    canReassign: isSuperAdmin || isAdmin,
-    canEdit: isManagerOrFaculty,
-    canReview: isManagerOrFaculty,
-    canUpdateProgress: isManagerOrFaculty || (isCoordinator && isOwner),
-    canAddNotes: isManagerOrFaculty || (isCoordinator && isOwner),
-    canUpload: isManagerOrFaculty || (isCoordinator && isOwner),
-    canComplete: isManagerOrFaculty || (isCoordinator && isOwner),
+    canCreate: isManager,
+    canAssignAnyone: isManager,
+    canReassign: isManager,
+    canEdit: isManager,
+    canReview: isManager,
+    canUpdateProgress: isManager || (isCoordinator && isOwner),
+    canAddNotes: isManager || (isCoordinator && isOwner),
+    canUpload: isManager || (isCoordinator && isOwner),
+    canComplete: isManager || (isCoordinator && isOwner),
     canRequestExtension: isCoordinator && isOwner,
-    readOnly: role === "viewer",
+    readOnly: role === "viewer" || role === "faculty",
   };
 }
 
